@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ProjectRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum ChannelStatus {
+  ACTIVE
+  ACTIVE_LIMITED
+  DISCONNECTED
+  SUSPENDED_NO_POST_RIGHT
+}
+
+enum PostStatus {
+  DRAFT
+  PENDING_APPROVAL
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  PARTIALLY_PUBLISHED
+  FAILED
+  CANCELLED
+  ARCHIVED
+}
+
+enum DeliveryStatus {
+  PENDING
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  RETRY_WAIT
+  FAILED_PERMANENT
+  UNKNOWN_OUTCOME
+  CANCELLED
+  DELETED
+}
+
+model User {
+  id             String          @id @default(cuid())
+  telegramUserId BigInt          @unique
+  username       String?
+  firstName      String?
+  lastName       String?
+  language       String          @default("uk")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  ownedProjects  Project[]       @relation("ProjectOwner")
+  memberships    ProjectMember[]
+  posts          Post[]
+}
+
+model Project {
+  id          String          @id @default(cuid())
+  name        String
+  timezone    String          @default("Europe/Kyiv")
+  ownerId     String
+  owner       User            @relation("ProjectOwner", fields: [ownerId], references: [id])
+  members     ProjectMember[]
+  channels    Channel[]
+  posts       Post[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model ProjectMember {
+  id        String      @id @default(cuid())
+  projectId String
+  userId    String
+  role      ProjectRole
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
+
+  @@unique([projectId, userId])
+}
+
+model Channel {
+  id             String        @id @default(cuid())
+  projectId      String
+  telegramChatId BigInt        @unique
+  title          String
+  username       String?
+  status         ChannelStatus @default(ACTIVE)
+  rights         Json
+  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  targets        PostTarget[]
+  deliveries     Delivery[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model Post {
+  id          String       @id @default(cuid())
+  publicId    String       @unique
+  projectId   String
+  authorId    String
+  status      PostStatus   @default(DRAFT)
+  contentType String
+  text        String?
+  entities    Json?
+  options     Json
+  revisionNo  Int          @default(1)
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author      User         @relation(fields: [authorId], references: [id])
+  media       PostMedia[]
+  buttons     PostButton[]
+  targets     PostTarget[]
+  deliveries  Delivery[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model PostMedia {
+  id           String  @id @default(cuid())
+  postId       String
+  position     Int
+  mediaType    String
+  fileId       String
+  fileUniqueId String?
+  mimeType     String?
+  fileSize     BigInt?
+  caption      String?
+  post         Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, position])
+}
+
+model PostButton {
+  id       String @id @default(cuid())
+  postId   String
+  rowNo    Int
+  position Int
+  text     String
+  url      String
+  post     Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+model PostTarget {
+  postId    String
+  channelId String
+  post      Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@id([postId, channelId])
+}
+
+model Delivery {
+  id                 String         @id @default(cuid())
+  postId             String
+  channelId          String
+  publishAtUtc       DateTime?
+  status             DeliveryStatus @default(PENDING)
+  expectedRevisionNo Int
+  attemptNo          Int            @default(0)
+  leaseUntil         DateTime?
+  workerId           String?
+  errorCode          String?
+  errorText          String?
+  publishedAt        DateTime?
+  post               Post           @relation(fields: [postId], references: [id], onDelete: Cascade)
+  channel            Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  messages           DeliveryMessage[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([status, publishAtUtc])
+  @@unique([postId, channelId, expectedRevisionNo])
+}
+
+model DeliveryMessage {
+  id                String   @id @default(cuid())
+  deliveryId        String
+  position          Int
+  telegramMessageId Int
+  kind              String
+  deletedAt         DateTime?
+  delivery          Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryId, position])
+}
+
+model UserSession {
+  userId    BigInt   @id
+  flow      String
+  state     String
+  payload   Json
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+}
+
+model TelegramUpdate {
+  updateId   BigInt    @id
+  type       String
+  receivedAt DateTime  @default(now())
+  processedAt DateTime?
+  status     String    @default("RECEIVED")
+}
