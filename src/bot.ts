@@ -4,8 +4,8 @@ import { ownerOnly } from "./auth.js";
 import { registerUserAndProject } from "./services/users.service.js";
 import { registerAddChannelCommand } from "./commands/addchannel.js";
 import { prisma } from "./db.js";
-const token = "8948654514:AAGIAeputDILGeStvM9IpNsyEdrtcFz4SnA";
 
+const token = "8948654514:AAGIAeputDILGeStvM9IpNsyEdrtcFz4SnA";
 export const bot = new Bot(token);
 
 // Тимчасовий словник для збереження стану користувачів
@@ -17,7 +17,7 @@ bot.command("start", async (ctx) => {
 
   const keyboard = new Keyboard()
     .text("Створити пост")
-    .text("Створити з AI") // Додали кнопку AI у головне меню
+    .text("Створити з AI")
     .row()
     .text("Контент-план")
     .text("Канали")
@@ -39,7 +39,6 @@ bot.hears("Створити пост", async (ctx) => {
   await ctx.reply("📝 Надішли текст для нового поста, і я збережу його в систему!");
 });
 
-// Обробник натискання кнопки "Створити з AI"
 bot.hears("Створити з AI", async (ctx) => {
   if (!ctx.from) return;
   userState.set(ctx.from.id, "WAITING_FOR_AI_PROMPT");
@@ -57,6 +56,24 @@ bot.hears("Канали", async (ctx) => {
 bot.hears("Налаштування", async (ctx) => {
   await ctx.reply("⚙️ Налаштування бота: тут ти зможеш змінити параметри проєкту та часовий пояс.");
 });
+
+// --- ВИПРАВЛЕНІ ТА ДОДАНІ КОМАНДИ ---
+
+// 1. Команда /newpost (тепер працює так само як кнопка створення поста)
+bot.command("newpost", async (ctx) => {
+  if (!ctx.from) return;
+  userState.set(ctx.from.id, "WAITING_FOR_POST_TEXT");
+  await ctx.reply("📝 Надішли текст для нового поста, і я збережу його в систему!");
+});
+
+// 2. Команда /whoami (показує Telegram ID)
+bot.command("whoami", async (ctx) => {
+  await ctx.reply(`Ваш Telegram ID: ${ctx.from?.id ?? "невідомий"}`);
+});
+
+// 3. Реєстрація команди /addchannel через імпортовану функцію
+registerAddChannelCommand(bot);
+
 
 // --- ОБРОБНИК ТЕКСТУ (ДЛЯ СТВОРЕННЯ ПОСТУ ТА AI) ---
 bot.on("message:text", async (ctx) => {
@@ -141,19 +158,14 @@ bot.command("help", async (ctx) => {
   await ctx.reply(
     [
       "/start - головне меню",
-      "/help - допомога",
+      "/newpost - створити новий пост",
       "/whoami - показати ваш Telegram ID",
-      "/posttest - тестова публікація",
       "/addchannel - підключити канал",
+      "/posttest - тестова публікація",
+      "/help - допомога",
     ].join("\n"),
   );
 });
-
-bot.command("whoami", async (ctx) => {
-  await ctx.reply(`Ваш Telegram ID: ${ctx.from?.id ?? "невідомий"}`);
-});
-
-registerAddChannelCommand(bot);
 
 bot.command("posttest", ownerOnly, async (ctx) => {
   const channelId = process.env.TEST_CHANNEL_ID;
@@ -186,12 +198,14 @@ bot.catch((error) => {
 });
 
 if (process.env.NODE_ENV !== "production") {
+  // Реєструємо команди в меню Telegram
   await bot.api.setMyCommands([
     { command: "start", description: "Запустити бота" },
-    { command: "help", description: "Допомога" },
+    { command: "newpost", description: "Створити новий пост" },
     { command: "whoami", description: "Показати мій Telegram ID" },
-    { command: "posttest", description: "Тестова публікація" },
     { command: "addchannel", description: "Підключити канал" },
+    { command: "posttest", description: "Тестова публікація" },
+    { command: "help", description: "Допомога" },
   ]);
 
   bot.start({
